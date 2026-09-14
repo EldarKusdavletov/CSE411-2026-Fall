@@ -61,7 +61,17 @@ public final class SimpleLexer {
   /** DFA transition function. A null result means that no transition exists. */
   private State transition(final State state, final char c) {
     switch (state) {
-      // TODO: Implement the DFA transitions.      
+      case START:
+        if (isZero(c)) return State.ZERO;
+        if (isDigit(c)) return State.INT;
+        if (isIdentifierStart(c)) return State.ID;
+        return null;
+      case ZERO:
+        return null;
+      case INT:
+        return isDigit(c) ? State.INT : null;
+      case ID:
+        return isIdentifierPart(c) ? State.ID : null;
       default:
         throw new AssertionError("Unknown DFA state: " + state);
     }
@@ -72,6 +82,10 @@ public final class SimpleLexer {
         && Character.isWhitespace(this.source.charAt(this.position))) {
       this.position++;
     }
+  }
+
+  private static boolean isZero(final char c) {
+    return c == '0';
   }
 
   private static boolean isDigit(final char c) {

@@ -35,7 +35,7 @@ public final class SimpleLexer {
     int end = start;
     while (this.position < source.length()) {
       final char c = this.source.charAt(this.position);
-      state = transition(state, c);      
+      state = transition(state, c);
       if (state == null) {
         break;
       }
@@ -137,7 +137,7 @@ public final class SimpleLexer {
     private State state() {
       return new State();
     }
-    
+
     private static final class Fragment {
       private final State start;
       private final State end;
@@ -177,8 +177,33 @@ public final class SimpleLexer {
 
     /* Converts an NFA to a DFA using the subset construction algorithm. */
     static Dfa convertNfaToDfa(final Nfa nfa) {
-      // TODO: Implement the subset construction algorithm to convert the NFA to a DFA.
-      return null; // TODO: Replace it with the actual DFA instance.
+      final Map<Set<Nfa.State>, State> dfaStates = new HashMap<Set<Nfa.State>, State>();
+      final Queue<Set<Nfa.State>> pending = new ArrayDeque<Set<Nfa.State>>();
+
+      final Set<Nfa.State> startSubset = closure(Collections.singleton(nfa.start));
+      final State startState = new State(acceptingType(startSubset));
+      dfaStates.put(startSubset, startState);
+      pending.add(startSubset);
+
+      while (!pending.isEmpty()) {
+        final Set<Nfa.State> subset = pending.remove();
+        final State fromState = dfaStates.get(subset);
+        for (final Character character : nfa.alphabet) {
+          final Set<Nfa.State> targetSubset = closure(move(subset, character));
+          if (targetSubset.isEmpty()) {
+            continue;
+          }
+          State toState = dfaStates.get(targetSubset);
+          if (toState == null) {
+            toState = new State(acceptingType(targetSubset));
+            dfaStates.put(targetSubset, toState);
+            pending.add(targetSubset);
+          }
+          fromState.transitions.put(character, toState);
+        }
+      }
+
+      return new Dfa(startState);
     }
 
     private static Set<Nfa.State> move(final Set<Nfa.State> states, final Character character) {
@@ -240,7 +265,7 @@ public final class SimpleLexer {
       State nextState(final char c) {
         return this.transitions.get(c);
       }
-    }    
+    }
   }
 
   public static final class LexicalException extends RuntimeException {

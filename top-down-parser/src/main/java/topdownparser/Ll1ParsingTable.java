@@ -36,92 +36,76 @@ public final class Ll1ParsingTable {
 
   /** Constructs the complete table, including conflicting cells when they exist. */
   public static Ll1ParsingTable build(final Grammar grammar) {
-    // construct first
+    final Map<String, Set<String>> first = computeFirstSets(grammar);
+    final Map<String, Set<String>> follow = computeFollowSets(grammar, first);
+    return new Ll1ParsingTable(grammar, first, follow, computeCells(grammar, first, follow));
+  }
+
+  /* For every X -> α: FIRST(α) ⊆ FIRST(X), repeated until no set changes. */
+  private static Map<String, Set<String>> computeFirstSets(final Grammar grammar) {
     final Map<String, Set<String>> first = initialSets(grammar);
     boolean changed = true;
     while (changed) {
       changed = false;
       for (final Production production : grammar.getProductions()) {
-        final Set<String> firstX = first.get(production.getLeftHandSide());
-
-        // X -> Y1 ... Yk: add FIRST(Yi) while every Y before it derives ε
-        boolean allNullable = true;
-        for (final String y : production.getRightHandSide()) {
-          if (grammar.getTerminals().contains(y)) {
-            changed |= firstX.add(y); // FIRST(terminal) = {terminal}
-            allNullable = false;
-            break;
-          }
-          changed |= addWithoutEpsilon(firstX, first.get(y));
-          if (!first.get(y).contains(Grammar.EPSILON)) {
-            allNullable = false;
-            break;
-          }
-        }
-
-        // X -> ε, or every Yi derives ε
-        if (allNullable) {
-          changed |= firstX.add(Grammar.EPSILON);
-        }
+        final Set<String> firstAlpha =
+            firstOfSequence(production.getRightHandSide(), grammar, first);
+        changed |= first.get(production.getLeftHandSide()).addAll(firstAlpha);
       }
     }
+    return first;
+  }
 
-    // construct follow
+  /*
+   * $ ∈ FOLLOW(start). For every X -> α Y β: FIRST(β) \ {ε} ⊆ FOLLOW(Y), and
+   * FOLLOW(X) ⊆ FOLLOW(Y) when ε ∈ FIRST(β). Repeated until no set changes.
+   */
+  private static Map<String, Set<String>> computeFollowSets(final Grammar grammar,
+      final Map<String, Set<String>> first) {
     final Map<String, Set<String>> follow = initialSets(grammar);
-    follow.get(grammar.getStartSymbol()).add(Grammar.END_MARKER); // $ ∈ FOLLOW(start)
-    changed = true;
+    follow.get(grammar.getStartSymbol()).add(Grammar.END_MARKER);
+    boolean changed = true;
     while (changed) {
       changed = false;
       for (final Production production : grammar.getProductions()) {
-        final Set<String> followX = follow.get(production.getLeftHandSide());
         final List<String> rhs = production.getRightHandSide();
-
         for (int i = 0; i < rhs.size(); i++) {
           final String y = rhs.get(i);
-          if (grammar.getTerminals().contains(y)) {
+          if (!grammar.getNonterminals().contains(y)) {
             continue;
           }
-
-          // X -> α Y β: FIRST(β) \ {ε} ⊆ FOLLOW(Y)
           final List<String> beta = rhs.subList(i + 1, rhs.size());
           final Set<String> firstBeta = firstOfSequence(beta, grammar, first);
           changed |= addWithoutEpsilon(follow.get(y), firstBeta);
-
-          // X -> α Y, or ε ∈ FIRST(β): FOLLOW(X) ⊆ FOLLOW(Y)
           if (firstBeta.contains(Grammar.EPSILON)) {
-            changed |= follow.get(y).addAll(followX);
+            changed |= follow.get(y).addAll(follow.get(production.getLeftHandSide()));
           }
         }
       }
     }
+    return follow;
+  }
 
-    // construct table
+  /* M[A, t] = A -> α for every t ∈ FIRST(α), and for every t ∈ FOLLOW(A) when ε ∈ FIRST(α). */
+  private static Map<String, Map<String, List<Production>>> computeCells(final Grammar grammar,
+      final Map<String, Set<String>> first, final Map<String, Set<String>> follow) {
     final Map<String, Map<String, List<Production>>> cells =
         new LinkedHashMap<String, Map<String, List<Production>>>();
     for (final String nonterminal : grammar.getNonterminals()) {
       cells.put(nonterminal, new LinkedHashMap<String, List<Production>>());
     }
-
     for (final Production production : grammar.getProductions()) {
-      final String A = production.getLeftHandSide();
-      final Set<String> firstAlpha = firstOfSequence(production.getRightHandSide(), grammar, first);
-
-      // for each terminal t ∈ FIRST(α): T[A][t] = α
-      for (final String t : firstAlpha) {
-        if (!Grammar.EPSILON.equals(t)) {
-          add(cells, A, t, production);
-        }
+      final String a = production.getLeftHandSide();
+      final Set<String> lookaheads =
+          firstOfSequence(production.getRightHandSide(), grammar, first);
+      if (lookaheads.remove(Grammar.EPSILON)) {
+        lookaheads.addAll(follow.get(a));
       }
-
-      // if ε ∈ FIRST(α), for each t ∈ FOLLOW(A): T[A][t] = α
-      if (firstAlpha.contains(Grammar.EPSILON)) {
-        for (final String t : follow.get(A)) {
-          add(cells, A, t, production);
-        }
+      for (final String t : lookaheads) {
+        add(cells, a, t, production);
       }
     }
-
-    return new Ll1ParsingTable(grammar, first, follow, cells);
+    return cells;
   }
 
   public Grammar getGrammar() {

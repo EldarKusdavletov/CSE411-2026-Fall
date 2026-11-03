@@ -231,9 +231,8 @@ public class StaticJavaASTBuilder extends
   @Override
   public ArrayAccess visitArrayLHS(final ArrayLHSContext ctx) {
     final ArrayAccess result = this.ast.newArrayAccess();
-
-    // TODO
-
+    result.setArray(this.build(ctx.e));
+    result.setIndex(this.build(ctx.idx));
     return result;
   }
 
@@ -271,15 +270,16 @@ public class StaticJavaASTBuilder extends
 
   @Override
   public PrimitiveType visitBooleanType(final BooleanTypeContext ctx) {
-    // TODO
+    return this.ast.newPrimitiveType(PrimitiveType.BOOLEAN);
   }
 
   @Override
   public TypeDeclaration visitClassDefinition(final ClassDefinitionContext ctx) {
     final TypeDeclaration result = this.ast.newTypeDeclaration();
-
-    // TODO
-
+    add(result.modifiers(), this.ast.newModifier(Modifier.ModifierKeyword.PUBLIC_KEYWORD));
+    result.setName(this.ast.newSimpleName(ctx.ID().getText()));
+    add(result.bodyDeclarations(), this.build(ctx.mainMethodDeclaration()));
+    builds(result.bodyDeclarations(), ctx.memberDeclaration());
     return result;
   }
 
@@ -315,12 +315,25 @@ public class StaticJavaASTBuilder extends
     return result;
   }
 
+  private Block block(final List<StatementContext> stmts) {
+    final Block result = this.ast.newBlock();
+    builds(result.statements(), stmts);
+    return result;
+  }
+
+  private ArrayInitializer arrayInit(final ArgsContext args) {
+    final ArrayInitializer result = this.ast.newArrayInitializer();
+    if (args != null) {
+      builds(result.expressions(), args.exp());
+    }
+    return result;
+  }
+
   @Override
   public DoStatement visitDoWhileStatement(final DoWhileStatementContext ctx) {
     final DoStatement result = this.ast.newDoStatement();
-
-    // TODO
-
+    result.setBody(block(ctx.statement()));
+    result.setExpression(this.build(ctx.exp()));
     return result;
   }
 
@@ -332,29 +345,35 @@ public class StaticJavaASTBuilder extends
   @Override
   public FieldDeclaration visitFieldDeclaration(
           final FieldDeclarationContext ctx) {
-    final VariableDeclarationFragment vdf = this.ast
-            .newVariableDeclarationFragment();
-    
-    // TODO
-
+    final VariableDeclarationFragment vdf = this.ast.newVariableDeclarationFragment();
+    vdf.setName(this.ast.newSimpleName(ctx.ID().getText()));
+    final FieldDeclaration result = this.ast.newFieldDeclaration(vdf);
+    add(result.modifiers(), this.ast.newModifier(Modifier.ModifierKeyword.STATIC_KEYWORD));
+    result.setType(this.build(ctx.type()));
     return result;
   }
 
   @Override
   public FieldAccess visitFieldLHS(final FieldLHSContext ctx) {
     final FieldAccess result = this.ast.newFieldAccess();
-
-    // TODO
-
+    result.setExpression(this.build(ctx.exp()));
+    result.setName(this.ast.newSimpleName(ctx.ID().getText()));
     return result;
   }
 
   @Override
   public ForStatement visitForStatement(final ForStatementContext ctx) {
     final ForStatement result = this.ast.newForStatement();
-    
-    // TODO
-
+    if (ctx.assigns() != null) {
+      builds(result.initializers(), ctx.assigns().assign());
+    }
+    if (ctx.exp() != null) {
+      result.setExpression(this.build(ctx.exp()));
+    }
+    if (ctx.incdecs() != null) {
+      builds(result.updaters(), ctx.incdecs().incdec());
+    }
+    result.setBody(block(ctx.statement()));
     return result;
   }
 
@@ -365,7 +384,7 @@ public class StaticJavaASTBuilder extends
 
   @Override
   public SimpleName visitIdLHS(final IdLHSContext ctx) {
-    // TODO
+    return this.ast.newSimpleName(ctx.ID().getText());
   }
 
   @Override
@@ -394,9 +413,8 @@ public class StaticJavaASTBuilder extends
   @Override
   public PostfixExpression visitIncdec(final IncdecContext ctx) {
     final PostfixExpression result = this.ast.newPostfixExpression();
-
-    // TODO
-
+    result.setOperand(this.build(ctx.leftHandSide()));
+    result.setOperator(StaticJavaASTBuilder.incdecMap.get(ctx.op.getText()));
     return result;
   }
 
@@ -416,21 +434,25 @@ public class StaticJavaASTBuilder extends
 
   @Override
   public PrimitiveType visitIntType(final IntTypeContext ctx) {
-    // TODO
+    return this.ast.newPrimitiveType(PrimitiveType.INT);
   }
 
   @Override
   public MethodInvocation visitInvoke(final InvokeContext ctx) {
     final MethodInvocation result = this.ast.newMethodInvocation();
-
-    // TODO
-
+    if (ctx.id1 != null) {
+      result.setExpression(this.ast.newSimpleName(ctx.id1.getText()));
+    }
+    result.setName(this.ast.newSimpleName(ctx.id2.getText()));
+    if (ctx.args() != null) {
+      builds(result.arguments(), ctx.args().exp());
+    }
     return result;
   }
 
   @Override
   public MethodInvocation visitInvokeExp(final InvokeExpContext ctx) {
-    // TODO
+    return this.<MethodInvocation> build(ctx.invoke());
   }
 
   @Override
@@ -443,25 +465,34 @@ public class StaticJavaASTBuilder extends
   @Override
   public VariableDeclarationStatement visitLocalDeclaration(
           final LocalDeclarationContext ctx) {
-    // TODO
+    final VariableDeclarationFragment vdf = this.ast.newVariableDeclarationFragment();
+    vdf.setName(this.ast.newSimpleName(ctx.ID().getText()));
+    final VariableDeclarationStatement result = this.ast.newVariableDeclarationStatement(vdf);
+    result.setType(this.build(ctx.type()));
+    return result;
   }
 
   @Override
   public MethodDeclaration visitMainMethodDeclaration(
           final MainMethodDeclarationContext ctx) {
     final MethodDeclaration result = this.ast.newMethodDeclaration();
-    
-    // TODO
-
+    add(result.modifiers(), this.ast.newModifier(Modifier.ModifierKeyword.PUBLIC_KEYWORD));
+    add(result.modifiers(), this.ast.newModifier(Modifier.ModifierKeyword.STATIC_KEYWORD));
+    result.setReturnType2(this.ast.newPrimitiveType(PrimitiveType.VOID));
+    result.setName(this.ast.newSimpleName(ctx.id1.getText()));
+    final SingleVariableDeclaration param = this.ast.newSingleVariableDeclaration();
+    param.setType(this.ast.newArrayType(this.ast.newSimpleType(this.ast.newSimpleName(ctx.id2.getText()))));
+    param.setName(this.ast.newSimpleName(ctx.id3.getText()));
+    add(result.parameters(), param);
+    result.setBody(this.<Block> build(ctx.methodBody()));
     return result;
   }
 
   @Override
   public Block visitMethodBody(final MethodBodyContext ctx) {
     final Block result = this.ast.newBlock();
-
-    // TODO
-
+    builds(result.statements(), ctx.localDeclaration());
+    builds(result.statements(), ctx.statement());
     return result;
   }
 
@@ -490,45 +521,39 @@ public class StaticJavaASTBuilder extends
   @Override
   public ASTNode visitNewArrayBasic(final NewArrayBasicContext ctx) {
     final ArrayCreation result = this.ast.newArrayCreation();
-
-    // TODO
-
+    result.setType(this.ast.newArrayType(this.build(ctx.basicType())));
+    add(result.dimensions(), this.build(ctx.exp()));
     return result;
   }
 
   @Override
   public ASTNode visitNewArrayBasicInit(final NewArrayBasicInitContext ctx) {
     final ArrayCreation result = this.ast.newArrayCreation();
-    
-    // TODO
-
+    result.setType(this.ast.newArrayType(this.build(ctx.basicType())));
+    result.setInitializer(arrayInit(ctx.args()));
     return result;
   }
 
   @Override
   public ArrayCreation visitNewArrayObject(final NewArrayObjectContext ctx) {
     final ArrayCreation result = this.ast.newArrayCreation();
-
-    // TODO
-
+    result.setType(this.ast.newArrayType(this.ast.newSimpleType(this.ast.newSimpleName(ctx.ID().getText()))));
+    add(result.dimensions(), this.build(ctx.exp()));
     return result;
   }
 
   @Override
   public ASTNode visitNewArrayObjectInit(final NewArrayObjectInitContext ctx) {
     final ArrayCreation result = this.ast.newArrayCreation();
-    
-    // TODO
-
+    result.setType(this.ast.newArrayType(this.ast.newSimpleType(this.ast.newSimpleName(ctx.ID().getText()))));
+    result.setInitializer(arrayInit(ctx.args()));
     return result;
   }
 
   @Override
   public ASTNode visitNewObject(final NewObjectContext ctx) {
     final ClassInstanceCreation result = this.ast.newClassInstanceCreation();
-
-    // TODO
-
+    result.setType(this.ast.newSimpleType(this.ast.newSimpleName(ctx.ID().getText())));
     return result;
   }
 
@@ -544,21 +569,16 @@ public class StaticJavaASTBuilder extends
 
   @Override
   public SingleVariableDeclaration visitParam(final ParamContext ctx) {
-    final SingleVariableDeclaration result = this.ast
-            .newSingleVariableDeclaration();
-
-    // TODO
-
+    final SingleVariableDeclaration result = this.ast.newSingleVariableDeclaration();
+    result.setType(this.build(ctx.type()));
+    result.setName(this.ast.newSimpleName(ctx.ID().getText()));
     return result;
   }
 
   @Override
   public ParenthesizedExpression visitParenExp(final ParenExpContext ctx) {
-    final ParenthesizedExpression result = this.ast
-            .newParenthesizedExpression();
-
-    // TODO
-
+    final ParenthesizedExpression result = this.ast.newParenthesizedExpression();
+    result.setExpression(this.build(ctx.exp()));
     return result;
   }
 
@@ -570,39 +590,49 @@ public class StaticJavaASTBuilder extends
   @Override
   public Expression visitPrimaryPrefix(final PrimaryPrefixContext ctx) {
     Expression result = this.<Expression> build(ctx.pPrefix());
-    
-    // TODO
-
+    for (final PSuffixContext suffix : ctx.pSuffix()) {
+      if (suffix instanceof AccessSuffixContext) {
+        final FieldAccess fa = this.ast.newFieldAccess();
+        fa.setExpression(result);
+        fa.setName(this.ast.newSimpleName(((AccessSuffixContext) suffix).ID().getText()));
+        result = fa;
+      } else {
+        final ArrayAccess aa = this.ast.newArrayAccess();
+        aa.setArray(result);
+        aa.setIndex(this.build(((IndexingSuffixContext) suffix).exp()));
+        result = aa;
+      }
+    }
     return result;
   }
 
   @Override
   public ASTNode visitPublicFieldDeclaration(
           final PublicFieldDeclarationContext ctx) {
-    final VariableDeclarationFragment vdf = this.ast
-            .newVariableDeclarationFragment();
+    final VariableDeclarationFragment vdf = this.ast.newVariableDeclarationFragment();
+    vdf.setName(this.ast.newSimpleName(ctx.ID().getText()));
     final FieldDeclaration result = this.ast.newFieldDeclaration(vdf);
-    
-    // TODO
-
+    add(result.modifiers(), this.ast.newModifier(Modifier.ModifierKeyword.PUBLIC_KEYWORD));
+    result.setType(this.build(ctx.type()));
     return result;
   }
 
   @Override
   public ReturnStatement visitReturnStatement(final ReturnStatementContext ctx) {
     final ReturnStatement result = this.ast.newReturnStatement();
-
-    // TODO
-
+    if (ctx.exp() != null) {
+      result.setExpression(this.build(ctx.exp()));
+    }
     return result;
   }
 
   @Override
   public ASTNode visitShiftBinaryExp(final ShiftBinaryExpContext ctx) {
     final InfixExpression result = this.ast.newInfixExpression();
-
-    // TODO
-
+    result.setLeftOperand(this.build(ctx.e1));
+    // shiftOp is split into single-char tokens ('>' '>'), so its text is the joined operator
+    result.setOperator(StaticJavaASTBuilder.binopMap.get(ctx.shiftOp().getText()));
+    result.setRightOperand(this.build(ctx.e2));
     return result;
   }
 
@@ -610,9 +640,8 @@ public class StaticJavaASTBuilder extends
   public ASTNode visitSimpleClassDefinition(
           final SimpleClassDefinitionContext ctx) {
     final TypeDeclaration result = this.ast.newTypeDeclaration();
-
-    // TODO
-
+    result.setName(this.ast.newSimpleName(ctx.ID().getText()));
+    builds(result.bodyDeclarations(), ctx.publicFieldDeclaration());
     return result;
   }
 
@@ -623,15 +652,17 @@ public class StaticJavaASTBuilder extends
 
   @Override
   public ASTNode visitType(final TypeContext ctx) {
-    // TODO
+    final Type type = ctx.basicType() != null
+        ? this.<Type> build(ctx.basicType())
+        : this.ast.newSimpleType(this.ast.newSimpleName(ctx.ID().getText()));
+    return ctx.t != null ? this.ast.newArrayType(type) : type;
   }
 
   @Override
   public PrefixExpression visitUnaryExp(final UnaryExpContext ctx) {
     final PrefixExpression result = this.ast.newPrefixExpression();
-
-    // TODO
-
+    result.setOperator(StaticJavaASTBuilder.unopMap.get(ctx.op.getText()));
+    result.setOperand(this.build(ctx.exp()));
     return result;
   }
 
@@ -643,9 +674,8 @@ public class StaticJavaASTBuilder extends
   @Override
   public WhileStatement visitWhileStatement(final WhileStatementContext ctx) {
     final WhileStatement result = this.ast.newWhileStatement();
-
-    // TODO
-    
+    result.setExpression(this.build(ctx.exp()));
+    result.setBody(block(ctx.statement()));
     return result;
   }
 }

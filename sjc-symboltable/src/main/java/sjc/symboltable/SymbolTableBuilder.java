@@ -114,33 +114,77 @@ public class SymbolTableBuilder {
       return false;
     }
 
+    /** Declares a parameter or local variable of the current method. */
+    private void declareLocal(final String name, final ASTNode decl) {
+      if (!this.localNames.add(name)) {
+        throw new Error(decl, "Variable \"" + name + "\" is already declared");
+      }
+      this.nameMap.put(name, decl);
+    }
+
     @Override
     public boolean visit(final FieldDeclaration node) {
-      // TODO
+      for (final Object o : node.fragments()) {
+        final String name = ((VariableDeclarationFragment) o).getName()
+            .getIdentifier();
+        if (this.nameMap.put(name, node) != null) {
+          throw new Error(node, "Field \"" + name + "\" is already declared");
+        }
+      }
       return false;
     }
 
     @Override
     public boolean visit(final MethodDeclaration node) {
-      // TODO
+      // Locals may shadow fields, so each method gets its own copy of the scope.
+      final Map<String, ASTNode> fields = this.nameMap;
+      this.nameMap = new HashMap<>(fields);
+      this.localNames.clear();
+      for (final Object o : node.parameters()) {
+        final SingleVariableDeclaration p = (SingleVariableDeclaration) o;
+        declareLocal(p.getName().getIdentifier(), p);
+      }
+      node.getBody().accept(this);
+      this.nameMap = fields;
       return false;
     }
 
     @Override
     public boolean visit(final MethodInvocation node) {
-      // TODO
+      final Expression e = node.getExpression();
+      // Calls qualified by another class are library calls; the type checker
+      // resolves those once it knows the argument types.
+      if ((e == null) || e.toString().equals(this.className)) {
+        final String name = node.getName().getIdentifier();
+        final MethodDeclaration md = this.methodMap.get(name);
+        if (md == null) {
+          throw new Error(node, "Method \"" + name + "\" is not declared");
+        }
+        this.result.put(node, md);
+      }
+      for (final Object o : node.arguments()) {
+        ((ASTNode) o).accept(this);
+      }
       return false;
     }
 
     @Override
     public boolean visit(final SimpleName node) {
-      // TODO
+      final ASTNode decl = this.nameMap.get(node.getIdentifier());
+      if (decl == null) {
+        throw new Error(node, "Variable \"" + node.getIdentifier()
+            + "\" is not declared");
+      }
+      this.result.put(node, decl);
       return false;
     }
 
     @Override
     public boolean visit(final VariableDeclarationStatement node) {
-      // TODO
+      for (final Object o : node.fragments()) {
+        declareLocal(((VariableDeclarationFragment) o).getName().getIdentifier(),
+            node);
+      }
       return false;
     }
 
@@ -177,7 +221,37 @@ public class SymbolTableBuilder {
 
     @Override
     public boolean visit(final TypeDeclaration node) {
-      // TODO
+      final String name = node.getName().getIdentifier();
+      if (!hasPublicModifier(node.modifiers())) {
+        if (this.classMap.put(name, node) != null) {
+          throw new Error(node, "Class \"" + name + "\" is already declared");
+        }
+        for (final FieldDeclaration fd : node.getFields()) {
+          for (final Object o : fd.fragments()) {
+            final String field = ((VariableDeclarationFragment) o).getName()
+                .getIdentifier();
+            if (this.fieldMap.put(new Pair<>(name, field), fd) != null) {
+              throw new Error(fd, "Field \"" + name + "." + field
+                  + "\" is already declared");
+            }
+          }
+        }
+        return false;
+      }
+      this.className = name;
+      // Declare all members first: bodies may use members declared after them.
+      for (final FieldDeclaration fd : node.getFields()) {
+        fd.accept(this);
+      }
+      for (final MethodDeclaration md : node.getMethods()) {
+        final String method = md.getName().getIdentifier();
+        if (this.methodMap.put(method, md) != null) {
+          throw new Error(md, "Method \"" + method + "\" is already declared");
+        }
+      }
+      for (final MethodDeclaration md : node.getMethods()) {
+        md.accept(this);
+      }
       return false;
     }
   }
